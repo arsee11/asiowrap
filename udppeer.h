@@ -105,6 +105,7 @@ protected:
 	void doPostSendto(const udpitem_ptr& item);
 	void onSentTo(const boost::system::error_code& ec, size_t slen, const UdpEndpoint& remote);
 	bool isOpen(){ return _isopen; }
+	void doClose();
 
 protected:
 	OnRecvDelegate _onrecv_d=nullptr;

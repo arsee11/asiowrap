@@ -3,6 +3,7 @@
 
 #include "udppeer.h"
 #include <iostream>
+#include <boost/asio/error.hpp>
 
 using namespace boost::asio;
 using namespace boost;
@@ -57,9 +58,24 @@ bool UdpPeer::open()
 
 void UdpPeer::close()
 {
+	if (_thread == nullptr || _thread->get_id() == NetworkThread::get_curid())
+		doClose();
+	else
+	{
+		udppeer_ptr shared_me = shared_from_this();
+		_thread->post([shared_me](){
+			shared_me->doClose(); 
+		}
+		);
+	}
+}
+
+////exec in single network thread
+void UdpPeer::doClose()
+{
 	_isopen = false;
-	_onrecv_d=nullptr;
-	_socket.close();	
+	_onrecv_d = nullptr;
+	_socket.close();
 }
 
 void UdpPeer::postSendto(const void* msg, size_t len, const UdpEndpoint& remote)
@@ -109,28 +125,28 @@ void UdpPeer::doPostSendto(const udpitem_ptr& item)
 void UdpPeer::onSentTo(const system::error_code& ec, size_t slen, const UdpEndpoint& remote)
 {
 	//cout << "UdpPeer::onSentTo thread:" << std::this_thread::get_id() << endl;
-	if (!ec)
-	{
-		if (_onsent_d != nullptr)
-			_onsent_d(remote, slen);
+	if (!isOpen())
+		return;
+		
+	if (_onsent_d != nullptr)
+		_onsent_d(remote, slen);
 
-		_item_queue.pop();
-		if (_item_queue.size() > 0)
-		{
-			const udpitem_ptr& titem = _item_queue.front();
-			udppeer_ptr shared_me = shared_from_this();
-			UdpEndpoint ep = titem->remote;
-			//async_write ensure all data in buffer will be writen
-			_socket.async_send_to(buffer(titem->data, titem->size), titem->remote, [shared_me, ep](const system::error_code& ec, size_t slen){
-				shared_me->onSentTo(ec, slen, ep);
-			}
-			);
+	_item_queue.pop();
+	if (_item_queue.size() > 0)
+	{
+		const udpitem_ptr& titem = _item_queue.front();
+		udppeer_ptr shared_me = shared_from_this();
+		UdpEndpoint ep = titem->remote;
+		//async_write ensure all data in buffer will be writen
+		_socket.async_send_to(buffer(titem->data, titem->size), titem->remote, [shared_me, ep](const system::error_code& ec, size_t slen){
+			shared_me->onSentTo(ec, slen, ep);
 		}
-
+		);
 	}
-	else
+
+	if (ec)
 	{
-		cout << "UdpPeer::onSentTo error : " << ec.message() << endl;
+		cout<<"UdpPeer::onSentTo error:"<<ec.message()<<endl;
 	}
 }
 
@@ -167,10 +183,17 @@ void UdpPeer::doSend(const item_ptr& item, const UdpEndpoint& remote)
 
 void UdpPeer::doRecvFrom()
 {
+	//printf("UdpPeer::doRecvFrom() onrecv from\n");
 	udppeer_ptr peer = shared_from_this();
 	_socket.async_receive_from(buffer(_recv_buf, MAX_RECV_SIZE), _sender_ep,
 		[peer](error_code ec, size_t rlen)
 		{
+			if (!peer->_isopen)
+			{
+				return;
+				//printf("UdpPeer::doRecvFrom() onrecv err %d, %s\n",ec.value(), ec.message().c_str());
+			}
+			
 			if(!ec)
 			{
 				if(peer->_onrecv_d != nullptr)
@@ -178,8 +201,12 @@ void UdpPeer::doRecvFrom()
 					UdpEndpoint remote = peer->_sender_ep;
 					peer->_onrecv_d(remote, peer->_recv_buf, rlen);
 				}
-				peer->doRecvFrom();
+				
 			}	
+			else
+				printf("UdpPeer::doRecvFrom() onrecv err %d, %s\n",ec.value(), ec.message().c_str());
+
+			peer->doRecvFrom();
 		}
 	);
 }
