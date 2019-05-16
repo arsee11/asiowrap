@@ -11,13 +11,13 @@ using namespace std;
 namespace asiow{
 
 
-MCastReceiver::MCastReceiver(io_context& ioc, const std::string& local_ip,const UdpEndpoint& mcast_ep)
-	:UdpPeer(ioc, local_ip, 0)
+MCastReceiver::MCastReceiver(const std::string& local_ip,const UdpEndpoint& mcast_ep)
+	:UdpPeer(local_ip, 0)
 	,_mcast_ep(mcast_ep)
 {}
 
-MCastReceiver::MCastReceiver(io_context& ioc,const UdpEndpoint& mcast_ep)
-	:MCastReceiver(ioc, "", mcast_ep)
+MCastReceiver::MCastReceiver(const UdpEndpoint& mcast_ep)
+	:MCastReceiver("", mcast_ep)
 {}
 
 bool MCastReceiver::open()

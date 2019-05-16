@@ -2,6 +2,7 @@
 //
 
 #include "connector.h"
+#include "networkpool.h"
 #include <iostream>
 
 using namespace boost::asio::ip;
@@ -10,36 +11,36 @@ using namespace boost;
 
 namespace asiow{
 
-connector_ptr Connector::create(io_context& ioc, const std::string& local_ip, uint16_t local_port)
+connector_ptr Connector::create(const std::string& local_ip, uint16_t local_port)
 {
-	return connector_ptr( new Connector(ioc, local_ip, local_port));
+	return connector_ptr( new Connector(local_ip, local_port));
 }
 
-connector_ptr Connector::create(io_context& ioc, uint16_t local_port)
+connector_ptr Connector::create(uint16_t local_port)
 {
-	return connector_ptr( new Connector(ioc,local_port));
+	return connector_ptr( new Connector(local_port));
 }
 
-connector_ptr Connector::create(io_context& ioc)
+connector_ptr Connector::create()
 {
-	return connector_ptr( new Connector(ioc));
+	return connector_ptr( new Connector());
 }
 
 
-Connector::Connector(io_context& ioc, const std::string& local_ip, uint16_t local_port)
-	:sock(ioc)
+Connector::Connector(const std::string& local_ip, uint16_t local_port)
+	:ContextTask(NetworkPool::instance().getThread())
 	,_local_ip(local_ip)
 	,_local_port(local_port)
 {
 }
 
-Connector::Connector(io_context& ioc, uint16_t local_port)
-	:Connector(ioc, "", local_port)
+Connector::Connector(uint16_t local_port)
+	:Connector( "", local_port)
 {
 }
 
-Connector::Connector(io_context& ioc)
-	:Connector(ioc, "", 0)
+Connector::Connector()
+	:Connector("", 0)
 {
 }
 
@@ -48,7 +49,7 @@ void Connector::initSock(socket& sock)
 	system::error_code ec;
 	sock.open(tcp::v4(), ec);		
 	if( ec )
-		return false;
+		throw std::runtime_error(ec.message());
 
 	if( !_local_ip.empty() && _local_port > 0)
 		sock.bind(tcp::endpoint(ip::make_address(_local_ip), _local_port), ec );
@@ -71,18 +72,16 @@ void Connector::initSock(socket& sock)
 connection_ptr Connector::connect(const std::string& remote_ip, uint16_t remote_port)
 {
 	try{
-		socket sock(_ioc);
+		socket sock(_thread->getContext());
 		initSock(sock);
 		sock.connect( tcp::endpoint(ip::make_address(remote_ip), remote_port) ); 
-		TcpConnection* tconn = new TcpConnection( std::move(sock)); 
-		tconn->setExecutor(_executor);
+		Connection* tconn = new Connection( std::move(sock)); 
 		tconn->start();
 		return connection_ptr(tconn);
 
 	}catch(system::system_error& e){
 		std::cout<<"Connector::connect:"<<e.what()<<std::endl;
 		return nullptr;
-	}
 	}catch(std::runtime_error& e){
 		std::cout<<"Connector::connect:"<<e.what()<<std::endl;
 		return nullptr;
@@ -91,22 +90,29 @@ connection_ptr Connector::connect(const std::string& remote_ip, uint16_t remote_
 
 void Connector::postConnect(const std::string& remote_ip, uint16_t remote_port)
 {
-	if(_executor != nullptr)
-	{
-		acceptor_ptr svr = shared_from_this();
-		_executor->post([svr, remote_ip, remote_port](){
-			svr->doConnect(remote_ip, remote_port);
-		});
-	}
-}
+	socket sock(_thread->getContext());
+	initSock(sock);
+	connector_ptr me = shared_from_this();
+	sock.async_connect( tcp::endpoint(ip::make_address(remote_ip), remote_port),
+		[me, &sock](const boost::system::error_code& ec){
+			if(!ec)
+			{
+				if(me->_onconn_d != nullptr)
+				{
+					connection_ptr conn(new Connection(std::move(sock)));
+					conn->start();
+					me->_onconn_d(conn);
+				}
+			}
+			else
+			{
+				std::cout<<"post connect failed:"<<ec.message()<<endl;
+				if(me->_onconn_d != nullptr)
+					me->_onconn_d(nullptr);
+			}
 
-void Connector::doConnect(const std::string& remote_ip, uint16_t remote_port)
-{
-	if(_onconn_d != nullptr)
-	{
-		connection_ptr conn = connection(remote_ip, remote_port);
-		_onconn_d(conn);
-	}
+		}
+	);
 }
 
 }//asiow

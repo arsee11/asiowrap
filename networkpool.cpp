@@ -5,33 +5,46 @@
 
 namespace asiow{
 
-
-	//boost::asio::io_context _io_context;
-
-void NetworkPool::init()
+void NetworkPool::init(int num_of_threads)
 {
 	if(_is_inited)
 		return ;
 		
-	_thread.reset( new NetworkThread(_io_context, [this](){ this->start(); }) );
+  	for (int i = 0; i < num_of_threads; ++i)
+  	{
+  	  thread_ptr thread(new NetworkThread);
+  	  _threads.push_back(thread);
+  	}
+
 	_is_inited=true;
 }
 
-void NetworkPool::start()
-{
-		_io_context.run();
-}
 void NetworkPool::uninit()
 {
 	if(!_is_inited ) 
 		return;
 
-	_io_context.stop();
-	if(_thread != nullptr)
-	{
-		_thread->stop();
-	}
+	for(auto i : _threads)
+		i->stop();
+
 	_is_inited=false;
 }
 
+thread_ptr NetworkPool::getThread()
+{
+	auto ithr = _threads.begin();
+	thread_ptr thr= *ithr;
+	if(_threads.size() == 1 )
+		return thr;
+
+	++ithr;
+
+	for(; ithr!= _threads.end(); ++ithr)
+	{
+		if(thr->taskCount() > (*ithr)->taskCount())
+			thr = *ithr;
+	}
+
+	return thr;
+}
 }

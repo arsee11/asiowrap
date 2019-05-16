@@ -13,8 +13,8 @@
 #include <boost/asio.hpp>
 
 #include "errordef.h"
-#include "network_executor.h"
 #include "utils.h"
+#include "context_task.h"
 		
 namespace asiow{
 
@@ -35,28 +35,21 @@ using OnErrorDelegate = std::function<void(const connection_ptr&, NetError) >;
 using OnConnectedDelegate = std::function<void (const connection_ptr&)>;
 
 
+///not thread safy
 class Connection : public std::enable_shared_from_this<Connection>
+	         , public ContextTask<boost::asio::ip::tcp::socket>
 {
-
-protected:
-	using socket = boost::asio::ip::tcp::socket;
-	using io_context = boost::asio::io_context;
-	using native_handle_type = socket::native_handle_type;
 
 public:
 	Connection(socket&& sock);
 
 	virtual ~Connection();
 
-	void start()override{ doReceive();}
-	void postSend(const void* msg, size_t len)override;
-	void send(const void* msg, size_t len)override;
-	void close()override;
-	bool isOpen()override{ return _isopen; }
-	
-	int fd()override{ return _socket.native_handle();}
-
-	void setExecutor(ExeScope* e){ _executor= e; }
+	void start(){ doReceive();}
+	void postSend(const void* msg, size_t len);
+	void close();
+	bool isOpen(){ return _isopen; }
+	int fd(){ return _socket.native_handle();}
 
 	//boost::asio options
 	template<class Opt>
@@ -72,32 +65,23 @@ public:
 	}
 
 protected:
-	Connection(io_context& ioc)
-		:_socket(ioc)
-	{
-	}
-		
-
 	void doReceive();
 
 private:
 	void onSent(const boost::system::error_code& ec, size_t slen);
-	void doSend(const void* msg, size_t len);
-	void doSend(const item_ptr& item);
 	void doPostSend(const item_ptr& item);
 	void doClose();
 
 private:
 	static const int MAX_RECV_SIZE=65536;
 	uint8_t _recv_buf[MAX_RECV_SIZE];
-
 	
 protected:
-	socket _socket;
 	bool _isopen=false;
-	ExeScope* _executor=nullptr;
 	std::queue<item_ptr, std::list<item_ptr> > _item_queue;
-
+	OnRecvDelegate _onrecv_d;
+	OnSentDelegate _onsent_d;
+	OnErrorDelegate _onerror_d;
 };
 
 

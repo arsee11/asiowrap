@@ -17,20 +17,19 @@ using thread_id = std::thread::id;
 
 class NetworkThread
 {
-public:
 	using Thread = std::thread;
 	using io_context = boost::asio::io_context;
 
+  	typedef boost::asio::executor_work_guard<io_context::executor_type> io_context_work;
+
+public:
 	//return current thread's id
 	static thread_id get_curid(){ return std::this_thread::get_id(); }
 
-	using RunFunc = std::function<void()>;
-
-	NetworkThread(io_context& ioc, const RunFunc& f)
-		:_io_context(ioc)
-		,_run_func(f)
+	NetworkThread()
+		:_workg(boost::asio::make_work_guard(_io_context))
 	{
-		_thread.reset( new Thread( [this](){ this->run();} ) );
+		_thread.reset( new Thread( [this](){ _io_context.run();} ) );
 	}
 
 	~NetworkThread()
@@ -44,12 +43,30 @@ public:
 		}
 	} 
 
+	io_context& getContext(){ return _io_context; }
+
+	int taskCount(){
+		lock_guard g(_mtx);
+		return _task_count;
+	}
+
+	void increaseTask(){
+		lock_guard g(_mtx);
+		_task_count++;
+	}
+
+	void decreaseTask(){
+		lock_guard g(_mtx);
+		_task_count--;
+	}
+
 	void stop(){ 
 		if(_is_stop)
 			return;
 
 		try{
 			_is_stop = true;
+			_io_context.stop();
 			_thread->join(); 
 		}catch(...)
 		{}
@@ -58,31 +75,23 @@ public:
 	thread_id get_id(){ return ( _is_stop ? thread_id() : _thread->get_id()); }
 
 	template<typename Task>
-	void post(const Task& t ){
-		if(_is_stop)
-			return;
+	void post(const Task& t ){ if(_is_stop) return;
 
 		boost::asio::post(_io_context, t);
 	}
 
 private:
-	void run(){
-		while(!_is_stop)
-		{
-			if(_run_func != nullptr)
-				_run_func();
-		}
+	io_context _io_context;
+	io_context_work _workg;
+	int _task_count;
+	using lock_guard = std::lock_guard<std::mutex>;
+	std::mutex _mtx;
 
-		//cout<<"network thread exit"<<endl;
-	}
-
-private:
 	std::unique_ptr<Thread> _thread;
-	io_context& _io_context;
-	RunFunc _run_func=nullptr;
 	volatile bool _is_stop=false;
 };
 	
+using thread_ptr=std::shared_ptr<NetworkThread>;
 
 }//asiow
 

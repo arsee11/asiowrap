@@ -2,6 +2,7 @@
 //
 
 #include "connection.h"
+#include "networkpool.h"
 #include <boost/asio.hpp>
 #include <iostream>
 #include <queue>
@@ -15,12 +16,7 @@ namespace asiow{
 
 
 Connection::Connection(socket&& sock)
-	:Connection(sock.local_endpoint().address().to_string()
-		,sock.local_endpoint().port()
-		,sock.remote_endpoint().address().to_string()
-		,sock.remote_endpoint().port()
-	)
-	,_socket( std::move(sock))
+	:ContextTask(NetworkPool::instance().getThread(), std::move(sock))
 {
 	_isopen = true;
 }
@@ -30,70 +26,16 @@ Connection::~Connection()
 	//cout<<"Connection::~Connection:"<<std::this_executor::get_id()<<endl;
 }
 
-void Connection::send(const void* msg, size_t len)
-{
-	//if current executor is the network executor, so exec
-	if(_executor == nullptr || _executor->get_id() == NetworkThread::get_curid() )
-		doSend(msg, len);
-	//else post to the network executor to exec
-	else
-	{
-		item_ptr item(new Item(msg, len) ); 
-		connection_ptr conn = shared_from_this();
-		_executor->post([item, conn](){ 
-			static_cast<Connection*>(conn.get())->doSend(item); }
-			);
-	}
-}
-
-////exec in single network executor
-void Connection::doSend(const void* msg, size_t len)
-{
-	//cout<<"Connection::doSend executor:"<<std::this_executor::get_id()<<endl;
-	//string ip;
-	//uint16_t port;
-	//tie(ip, port) = this->remote_addr();
-	//cout<<"Connection::doSend("<<len<<") to["<<ip<<":"<<port<<"]"<<endl;
-
-	if(!isOpen())
-	{
-		cout<<"connection::doSend() error: not open"<<endl; 
-		return;
-	}
-
-	try{
-		boost::asio::write(_socket, buffer(msg, len) );
-		if (_onsent_d != nullptr)
-			_onsent_d(shared_from_this(), len);
-
-	}catch(system::system_error& e){
-		cout<<"Connection::doSend failure:"<<e.what()<<endl;
-		if(_onerror_d != nullptr)
-			_onerror_d(shared_from_this(), ERR_ON_SEND);
-	}
-}
-
-////exec in single network executor
-void Connection::doSend(const item_ptr& item)
-{
-	doSend(item->data, item->size);
-}
-
 void Connection::postSend(const void* msg, size_t len)
 {
 	item_ptr item(new Item(msg, len) ); 
-	if(_executor == nullptr || _executor->get_id() == NetworkThread::get_curid() )
-		doPostSend(item);
-	else
-	{
-		connection_ptr conn = shared_from_this();
-		_executor->post([item, conn](){ 
+	connection_ptr conn = shared_from_this();
+	_thread->post([item, conn](){ 
 			static_cast<Connection*>(conn.get())->doPostSend(item); }
 			);
-	}
+
 }
 
-////exec in single network executor
 void Connection::doPostSend(const item_ptr& item)
 {
 	//cout<<"Connection::doPostSend executor:"<<std::this_executor::get_id()<<endl;
@@ -125,7 +67,6 @@ void Connection::doPostSend(const item_ptr& item)
 	);
 }
 
-////exec in single network executor
 void Connection::onSent(const system::error_code& ec, size_t slen)
 {
 	//cout<<"Connection::onSent executor:"<<std::this_executor::get_id()<<endl;
@@ -158,7 +99,6 @@ void Connection::onSent(const system::error_code& ec, size_t slen)
 	}
 }
 
-////exec in single network executor
 void Connection::doReceive()
 {
 	if( !_isopen)
@@ -191,18 +131,12 @@ void Connection::doReceive()
 
 void Connection::close()
 {
-	if(_executor == nullptr || _executor->get_id() == NetworkThread::get_curid() )
-		doClose();
-	else
-	{
-		connection_ptr conn = shared_from_this();
-		_executor->post([conn](){ 
-			static_cast<Connection*>(conn.get())->doClose(); }
-			);
-	}
+	connection_ptr conn = shared_from_this();
+	_thread->post([conn](){ 
+		static_cast<Connection*>(conn.get())->doClose(); }
+	);
 }
 
-////exec in single network executor
 void Connection::doClose()
 {
 	//cout<<"Connection::doClose executor:"<<std::this_executor::get_id()<<endl;

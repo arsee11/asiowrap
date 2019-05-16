@@ -17,8 +17,8 @@ namespace asiow{
 class MCastReceiver:public UdpPeer
 {
 public:
-	MCastReceiver(io_context& ioc, const std::string& local_ip, const UdpEndpoint& mcast_ep); 
-	MCastReceiver(io_context& ioc, const UdpEndpoint& mcast_ep);
+	MCastReceiver(const std::string& local_ip, const UdpEndpoint& mcast_ep); 
+	MCastReceiver(const UdpEndpoint& mcast_ep);
 
 	bool open();
 

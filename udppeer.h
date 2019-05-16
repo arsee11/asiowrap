@@ -8,7 +8,7 @@
 #include <boost/asio.hpp>
 #include "errordef.h"
 #include "endpoints.h"
-#include "network_thread.h"
+#include "context_task.h"
 #include "utils.h"
 #include <memory>
 #include <queue>
@@ -20,13 +20,12 @@ namespace asiow{
 class UdpPeer;
 using udppeer_ptr = std::shared_ptr<UdpPeer>;
 
+//not thread safy
 class UdpPeer : public std::enable_shared_from_this<UdpPeer>
+	      , public ContextTask<boost::asio::ip::udp::socket>
 {
-public:
-	using io_context= boost::asio::io_context;
 
 protected:
-	using socket = boost::asio::ip::udp::socket;
 	using error_code = boost::system::error_code;
 	using udp = boost::asio::ip::udp;
 
@@ -40,19 +39,24 @@ public:
 	using OnSentDelegate = std::function<void(const UdpEndpoint&, size_t) >;
 
 public:
-	static udppeer_ptr create(io_context& ioc, const std::string& local_ip, uint16_t port){
-		return udppeer_ptr(new UdpPeer(ioc, local_ip, port) );
+
+	static udppeer_ptr create(const std::string& local_ip, uint16_t port){
+		return udppeer_ptr(new UdpPeer(local_ip, port) );
 	}
 
-	static udppeer_ptr create(io_context& ioc, uint16_t port){
-		return udppeer_ptr(new UdpPeer(ioc, port) );
+
+	static udppeer_ptr create(uint16_t port){
+		return udppeer_ptr(new UdpPeer(port) );
 	}
 
-	static udppeer_ptr create(io_context& ioc ){
-		return udppeer_ptr(new UdpPeer(ioc ) );
+
+	static udppeer_ptr create(){
+		return udppeer_ptr(new UdpPeer() );
 	}
 
-	virtual ~UdpPeer(){}
+
+	virtual ~UdpPeer(){
+	}
 
 	void listenOnRecv(const OnRecvDelegate& cb){ _onrecv_d = cb; }
 	void listenOnSent(const OnSentDelegate& cb){ _onsent_d = cb; }
@@ -85,15 +89,14 @@ public:
 
 	int fd(){ return _socket.native_handle(); }
 
-	void set_thread(NetworkThread* val){ _thread= val; }
-
 	///return local ip addr and port number.
 	std::tuple<std::string, uint16_t> local_addr(){ return std::make_tuple(_local_ip, _local_port); }
 
 protected:
-	UdpPeer(io_context& ioc, const std::string& local_ip, uint16_t port);
-	UdpPeer(io_context& ioc, uint16_t port);
-	UdpPeer(io_context& ioc );
+	UdpPeer(const std::string& local_ip, uint16_t port);
+	UdpPeer(uint16_t port);
+	UdpPeer();
+
 
 	std::string _local_ip;
 	uint16_t _local_port;
@@ -111,13 +114,10 @@ protected:
 	OnRecvDelegate _onrecv_d=nullptr;
 	OnSentDelegate _onsent_d = nullptr;
 
-	socket _socket;
 	udp::endpoint _sender_ep;
 
 	static const int MAX_RECV_SIZE=1024*10;
 	uint8_t _recv_buf[MAX_RECV_SIZE];
-
-	NetworkThread* _thread=nullptr;
 
 	std::queue<item_ptr, std::list<udpitem_ptr> > _item_queue;
 	bool _isopen = false;

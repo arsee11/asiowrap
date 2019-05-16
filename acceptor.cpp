@@ -2,6 +2,7 @@
 //
 
 #include "acceptor.h"
+#include "networkpool.h"
 #include <iostream>
 
 using namespace boost::asio;
@@ -10,27 +11,28 @@ using namespace std;
 namespace asiow{
 
 
-Aceeptor::Aceeptor(io_context& ioc, const std::string& local_ip, uint16_t port)
-	:_acceptor(ioc, endpoint(ip::make_address(local_ip), port))
+Acceptor::Acceptor(const std::string& local_ip, uint16_t port)
+	:ContextTask(NetworkPool::instance().getThread())
 {
+	_acceptor.reset(new acceptor(_thread->getContext(), endpoint(ip::make_address(local_ip), port)));
 	socket_base::reuse_address opt(true);
-	_acceptor.set_option(opt);
+	_acceptor->set_option(opt);
 }
 
-Aceeptor::Aceeptor(io_context& ioc, uint16_t port)
-	:_acceptor(ioc, endpoint(tcp::v4(), port))
+Acceptor::Acceptor(uint16_t port)
+	:Acceptor("", port)
 {
 }
 
-void Aceeptor::listenOnConnected(const OnConnectedDelegate& cb)
+void Acceptor::listenOnConnected(const OnConnectedDelegate& cb)
 {
 	_onconn_d = cb;
 }
 
-void Aceeptor::doAccept()
+void Acceptor::doAccept()
 {
-	_acceptor.async_accept( 
-		[this](const error_code& ec, socket sock)
+	_acceptor->async_accept( 
+		[this](const error_code& ec, boost::asio::ip::tcp::socket sock)
 		{
 			if(!ec)
 			{
@@ -40,47 +42,37 @@ void Aceeptor::doAccept()
 				//	cout<<"r ip:"<<sock.remote_endpoint().address().to_string()<<endl;
 				//	cout<<"r port"<<sock.remote_endpoint().port()<<endl;
 					
-					TcpConnection* tconn = new TcpConnection( std::move(sock)); 
-					tconn->setExecutor(_executor);
-					connection_ptr conn(tconn);
-					_onconn_d(conn);
+					connection_ptr conn(new Connection(std::move(sock)));
 					conn->start();
+					_onconn_d(conn);
 				}
 				doAccept();
 			}
 			else
-				cout<<"Aceeptor::doAccept error:"<<ec.message()<<endl;
+				cout<<"Acceptor::doAccept error:"<<ec.message()<<endl;
 
 		});
 }
 
-void Aceeptor::start()
+void Acceptor::start()
 {
 	doAccept();
 }
 
-void Aceeptor::close()
+void Acceptor::close()
 {
-	if(_executor == nullptr)
-	{
-		this->doClose();
-	}
-	else
-	{
-		acceptor_ptr svr = shared_from_this();
-		_executor->post([svr](){
-			svr->doClose();
-		});
-		//cout<<"closed, executor:"<<NetworkThread::get_curid()<<endl;
-	}
+	acceptor_ptr svr = shared_from_this();
+	_thread->post([svr](){
+		svr->doClose();
+	});
 
 }
 
-void Aceeptor::doClose()
+void Acceptor::doClose()
 {
 	cout<<"do close, executor:"<<NetworkThread::get_curid()<<endl;
 	_onconn_d=nullptr;
-	_acceptor.close();
+	_acceptor->close();
 }
 
 

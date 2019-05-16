@@ -4,6 +4,7 @@
 #include "udppeer.h"
 #include <iostream>
 #include <boost/asio/error.hpp>
+#include "networkpool.h"
 
 using namespace boost::asio;
 using namespace boost;
@@ -12,18 +13,20 @@ using namespace std;
 namespace asiow{
 
 
-UdpPeer::UdpPeer(io_context& ioc, const std::string& local_ip, uint16_t local_port)
-	:_local_ip(local_ip)
+UdpPeer::UdpPeer(const std::string& local_ip, uint16_t local_port)
+	:ContextTask(NetworkPool::instance().getThread())
+	,_local_ip(local_ip)
 	,_local_port(local_port)
-	,_socket(ioc)
+{
+}
+
+
+UdpPeer::UdpPeer(uint16_t local_port)
+	:UdpPeer("", local_port)
 {}
 
-UdpPeer::UdpPeer(io_context& ioc, uint16_t local_port)
-	:UdpPeer(ioc, "", local_port)
-{}
-
-UdpPeer::UdpPeer(io_context& ioc )
-	:UdpPeer(ioc, "", 0)
+UdpPeer::UdpPeer()
+	:UdpPeer("", 0)
 {}
 
 
@@ -58,19 +61,14 @@ bool UdpPeer::open()
 
 void UdpPeer::close()
 {
-	if (_thread == nullptr || _thread->get_id() == NetworkThread::get_curid())
-		doClose();
-	else
-	{
-		udppeer_ptr shared_me = shared_from_this();
-		_thread->post([shared_me](){
-			shared_me->doClose(); 
+	udppeer_ptr shared_me = shared_from_this();
+	_thread->post([shared_me](){
+		shared_me->doClose(); 
 		}
-		);
-	}
+	);
+	
 }
 
-////exec in single network thread
 void UdpPeer::doClose()
 {
 	_isopen = false;
@@ -82,20 +80,12 @@ void UdpPeer::postSendto(const void* msg, size_t len, const UdpEndpoint& remote)
 {
 	//cout << "UdpPeer::postSendto thread:" << std::this_thread::get_id() << endl;
 	udpitem_ptr item(new UdpItem(msg, len, remote));
-	if (_thread == nullptr || _thread->get_id() == NetworkThread::get_curid())
-	{
-		//cout << "UdpPeer::postSendto same thread" << _thread << ","<<_thread->get_id() <<","<< NetworkThread::get_curid()<<endl;
-		doPostSendto(item);
-	}
-	else
-	{
-		udppeer_ptr shared_me = shared_from_this();
-		_thread->post([item, shared_me](){
-			shared_me->doPostSendto(item); }
-		);
-	}
+	udppeer_ptr shared_me = shared_from_this();
+	_thread->post([item, shared_me](){
+		shared_me->doPostSendto(item); }
+	);
 }
-//exec in single network thread
+
 void UdpPeer::doPostSendto(const udpitem_ptr& item)
 {
 	//cout<<"UdpPeer::doPostSendto thread:"<<std::this_thread::get_id()<<endl;
@@ -121,7 +111,6 @@ void UdpPeer::doPostSendto(const udpitem_ptr& item)
 	);
 }
 
-////exec in single network thread
 void UdpPeer::onSentTo(const system::error_code& ec, size_t slen, const UdpEndpoint& remote)
 {
 	//cout << "UdpPeer::onSentTo thread:" << std::this_thread::get_id() << endl;
@@ -148,37 +137,6 @@ void UdpPeer::onSentTo(const system::error_code& ec, size_t slen, const UdpEndpo
 	{
 		cout<<"UdpPeer::onSentTo error:"<<ec.message()<<endl;
 	}
-}
-
-void UdpPeer::sendto(const void* msg, size_t len, const UdpEndpoint& remote)
-{
-	if(_thread == nullptr || _thread->get_id() == NetworkThread::get_curid() )
-		doSend(msg, len, remote);
-	//else post to the network thread to exec
-	else
-	{
-		item_ptr item(new Item(msg, len) ); 
-		udppeer_ptr peer = shared_from_this();
-		_thread->post([item, remote, peer](){ peer->doSend(item, remote); }
-			);
-	}
-}
-
-void UdpPeer::doSend(const void* msg, size_t len, const UdpEndpoint& remote)
-{
-	//cout<<"UdpPeer::doSend thread:"<<std::this_thread::get_id()<<endl;
-	try{
-		_socket.send_to(buffer(msg, len), remote);
-		if (_onsent_d != nullptr)
-			_onsent_d(remote, len);
-	}catch(system::system_error& e){
-		cout<<"UdpPeer::sendto() failure:"<<e.what()<<endl;
-	}
-}
-
-void UdpPeer::doSend(const item_ptr& item, const UdpEndpoint& remote)
-{
-	doSend(item->data, item->size, remote);
 }
 
 void UdpPeer::doRecvFrom()
