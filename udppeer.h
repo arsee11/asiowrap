@@ -66,8 +66,6 @@ public:
 	//use async sendto method
 	void postSendto(const void* msg, size_t len, const UdpEndpoint& remote);
 
-	void sendto(const void* buf, size_t size, const UdpEndpoint& remote);
-
 	void close();
 
 	size_t sentQueueSize(){
