@@ -43,7 +43,6 @@ void Acceptor::doAccept()
 				//	cout<<"r port"<<sock.remote_endpoint().port()<<endl;
 					
 					connection_ptr conn(new Connection(std::move(sock)));
-					conn->start();
 					_onconn_d(conn);
 				}
 				doAccept();

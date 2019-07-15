@@ -64,6 +64,14 @@ public:
 		}
 	}
 
+	void listenOnRecv( OnRecvDelegate recvd){ _onrecv_d = recvd; }
+	void listenOnError( OnErrorDelegate errd){ _onerror_d = errd; }
+	void listenOnSent( OnSentDelegate sentd){ _onsent_d = sentd; }
+
+	std::tuple<std::string, uint16_t> local_addr(){return std::make_tuple("", 0);} 
+	std::tuple<std::string, uint16_t> remote_addr(){return std::make_tuple(_remote_ip, _remote_port);} 
+
+	socket& getSocket(){ return this->_socket; }
 protected:
 	void doReceive();
 
@@ -73,15 +81,17 @@ private:
 	void doClose();
 
 private:
-	static const int MAX_RECV_SIZE=65536;
+	static const int MAX_RECV_SIZE=1024*1024;
 	uint8_t _recv_buf[MAX_RECV_SIZE];
 	
-protected:
 	bool _isopen=false;
 	std::queue<item_ptr, std::list<item_ptr> > _item_queue;
 	OnRecvDelegate _onrecv_d;
 	OnSentDelegate _onsent_d;
 	OnErrorDelegate _onerror_d;
+
+	std::string _remote_ip;
+	uint16_t _remote_port;
 };
 
 

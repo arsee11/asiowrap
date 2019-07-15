@@ -69,15 +69,19 @@ void Connector::initSock(socket& sock)
 		_local_port = sock.local_endpoint().port();
 }
 
-connection_ptr Connector::connect(const std::string& remote_ip, uint16_t remote_port)
+connection_ptr Connector::connect(const std::string& remote_ip, uint16_t remote_port
+				 ,OnRecvDelegate recvd, OnSentDelegate sentd,  OnErrorDelegate errd   )
 {
 	try{
 		socket sock(_thread->getContext());
 		initSock(sock);
 		sock.connect( tcp::endpoint(ip::make_address(remote_ip), remote_port) ); 
-		Connection* tconn = new Connection( std::move(sock)); 
-		tconn->start();
-		return connection_ptr(tconn);
+		connection_ptr conn(new Connection(std::move(sock)));
+		conn->listenOnRecv( recvd);
+		conn->listenOnError( errd);
+		conn->listenOnSent( sentd);
+		conn->start();
+		return connection_ptr(conn);
 
 	}catch(system::system_error& e){
 		std::cout<<"Connector::connect:"<<e.what()<<std::endl;
@@ -88,18 +92,22 @@ connection_ptr Connector::connect(const std::string& remote_ip, uint16_t remote_
 	}
 }
 
-void Connector::postConnect(const std::string& remote_ip, uint16_t remote_port)
+void Connector::postConnect(const std::string& remote_ip, uint16_t remote_port
+			 ,OnRecvDelegate recvd, OnSentDelegate sentd,  OnErrorDelegate errd)
 {
 	socket sock(_thread->getContext());
 	initSock(sock);
+	connection_ptr conn(new Connection(std::move(sock)));
 	connector_ptr me = shared_from_this();
-	sock.async_connect( tcp::endpoint(ip::make_address(remote_ip), remote_port),
-		[me, &sock](const boost::system::error_code& ec){
+	conn->getSocket().async_connect( tcp::endpoint(ip::make_address(remote_ip), remote_port),
+		[conn, me, recvd, sentd, errd](const boost::system::error_code& ec){
 			if(!ec)
 			{
 				if(me->_onconn_d != nullptr)
 				{
-					connection_ptr conn(new Connection(std::move(sock)));
+					conn->listenOnRecv( recvd);
+					conn->listenOnError( errd);
+					conn->listenOnSent( sentd);
 					conn->start();
 					me->_onconn_d(conn);
 				}
@@ -110,8 +118,7 @@ void Connector::postConnect(const std::string& remote_ip, uint16_t remote_port)
 				if(me->_onconn_d != nullptr)
 					me->_onconn_d(nullptr);
 			}
-
-		}
+}
 	);
 }
 

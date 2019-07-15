@@ -25,7 +25,7 @@ class ContextTask
 
 protected:
 	using socket = Socket;
-	using native_handle_type = typename socket::native_handle_type;
+	//using native_handle_type = typename socket::native_handle_type;
 
 public:
 	ContextTask(thread_ptr thr, socket&& sock)

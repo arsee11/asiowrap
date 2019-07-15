@@ -16,8 +16,11 @@ namespace asiow{
 
 
 Connection::Connection(socket&& sock)
-	:ContextTask(NetworkPool::instance().getThread(), std::move(sock))
+	:ContextTask(NetworkPool::instance().getThread())
 {
+	_remote_ip=sock.remote_endpoint().address().to_string();
+	_remote_port=sock.remote_endpoint().port();
+	this->_socket = std::move(sock);
 	_isopen = true;
 }
 

@@ -23,10 +23,13 @@ public:
 	static connector_ptr create(uint16_t local_port);
 	static connector_ptr create();
 
-	void listenOnConnected(const OnConnectedDelegate& cb);
+	void listenOnConnected(const OnConnectedDelegate& cb){ _onconn_d = cb; }
 
-	connection_ptr connect(const std::string& remote_ip, uint16_t remote_port);
-	void postConnect(const std::string& remote_ip, uint16_t remote_port);
+	connection_ptr connect(const std::string& remote_ip, uint16_t remote_port
+			 ,OnRecvDelegate recvd, OnSentDelegate sentd,  OnErrorDelegate errd);
+
+	void postConnect(const std::string& remote_ip, uint16_t remote_port
+			 ,OnRecvDelegate recvd, OnSentDelegate sentd,  OnErrorDelegate errd);
 
 protected:
 	Connector(const std::string& local_ip, uint16_t local_port);
