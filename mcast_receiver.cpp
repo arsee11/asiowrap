@@ -40,6 +40,7 @@ bool MCastReceiver::open()
 	if( ec )
 		return false;
 
+	this->_isopen = true;
 	doRecvFrom();	
 	return true;
 	

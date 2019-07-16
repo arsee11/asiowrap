@@ -1,7 +1,7 @@
-#include "../timer.h"
 #include <iostream>
 #include <list>
 
+#include "../timer.h"
 #include "../networkpool.h"
 
 
@@ -9,27 +9,36 @@ using namespace std;
 using namespace std::placeholders;
 using namespace asiow;
 
-void onTimeout(const Timer* t)
+std::mutex locker;
+void onTimeout(const timer_ptr& t)
 {
-	cout<<"timer tick:"<<t<<endl;
+	locker.lock();
+	cout<<"timer:"<<t.get();
+	cout<<" thread:"<<NetworkThread::get_curid()<<endl;
+	locker.unlock();
 }
 
 int main()
 {
-	//boost::asio::io_context ioc;
-	//Timer timer(ioc, 1000);
-	//timer.start(&onTimeout);
-	//ioc.run();
+	NetworkPool::instance().init(2);
 
-	NetworkPool np;
-	np.init();
+	timer_ptr timer1 = Timer::create(1000);
+	timer1->start(onTimeout);
 
-	Timer* timer = np.createTimer<Timer>(1000);
-	timer->start(onTimeout);
+	timer_ptr timer2 = Timer::create(1000);
+	timer2->start(onTimeout);
+	
+	timer_ptr timer3 = Timer::create(1000);
+	timer3->start(onTimeout);
+
+	cout<<"press enter to stop timer"<<endl;
+	getchar();
+	timer1->stop();
+	timer2->stop();
+	timer3->stop();
 
 	getchar();
-	timer->stop();
-	np.uninit();
+	cout<<"press enter to exit"<<endl;
 
 	return 0;
 }

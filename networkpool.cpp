@@ -7,6 +7,9 @@ namespace asiow{
 
 void NetworkPool::init(int num_of_threads)
 {
+	if(num_of_threads <=0 )
+		throw std::runtime_error("NetworkPool::init num_of_threads must > 0");
+
 	if(_is_inited)
 		return ;
 		
@@ -32,6 +35,9 @@ void NetworkPool::uninit()
 
 thread_ptr NetworkPool::getThread()
 {
+	if(_threads.size() == 0 )
+		throw std::runtime_error("NetworkPool is not init");
+
 	auto ithr = _threads.begin();
 	thread_ptr thr= *ithr;
 	if(_threads.size() == 1 )

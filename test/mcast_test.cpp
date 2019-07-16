@@ -1,4 +1,6 @@
 #include "../mcast_receiver.h"
+#include "../networkpool.h"
+
 #include <iostream>
 #include <unordered_set>
 #include <thread>
@@ -11,38 +13,23 @@ using namespace asiow;
 
 void onRecv(const UdpEndpoint& ep, void* msg, size_t size)
 {
-	cout<<"recv("<<size<<") from:"<<ep<<endl;
+	cout<<"recv("<<size<<" bytes from:"<<ep<<"):"<<(char*)msg<<endl;
 }
-
-void worker_thr(UdpPeer* udp, UdpEndpoint* ep)
-{
-	while(true)
-	{
-		this_thread::sleep_for(chrono::seconds(1));
-
-		const char *msg = "hello,world!";
-		udp->sendto(msg, strlen(msg), *ep);
-	}
-};
 
 int main()
 {
-	boost::asio::io_context ioc;
+	NetworkPool::instance().init(1);
 
 	UdpEndpoint mep=makeUdpEndpoint("239.0.0.1", 30001);
-	MCastReceiver mcaster(ioc, mep);
-	mcaster.listenOnRecv(&onRecv); 
+	mcast_receiver_ptr mcaster = MCastReceiver::create(mep);
+	mcaster->listenOnRecv(&onRecv); 
 
-	if( !mcaster.open() )
+	if( !mcaster->open() )
 	{
 		cout<<"open failed"<<endl;
 		return 1;
 	}
 
-	udppeer_ptr udp = UdpPeer::create(ioc);
-	udp->open();
-	thread th(worker_thr, udp.get(), &mep);
-	ioc.run();
-
+	getchar();
 	return 0;
 }

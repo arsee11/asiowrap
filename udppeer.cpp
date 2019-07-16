@@ -141,15 +141,14 @@ void UdpPeer::onSentTo(const system::error_code& ec, size_t slen, const UdpEndpo
 
 void UdpPeer::doRecvFrom()
 {
-	//printf("UdpPeer::doRecvFrom() onrecv from\n");
 	udppeer_ptr peer = shared_from_this();
 	_socket.async_receive_from(buffer(_recv_buf, MAX_RECV_SIZE), _sender_ep,
 		[peer](error_code ec, size_t rlen)
 		{
+			//cout<<"UdpPeer::on recv :"<<rlen<<endl;
 			if (!peer->_isopen)
 			{
 				return;
-				//printf("UdpPeer::doRecvFrom() onrecv err %d, %s\n",ec.value(), ec.message().c_str());
 			}
 			
 			if(!ec)
@@ -162,7 +161,7 @@ void UdpPeer::doRecvFrom()
 				
 			}	
 			else
-				printf("UdpPeer::doRecvFrom() onrecv err %d, %s\n",ec.value(), ec.message().c_str());
+				cout<<"UdpPeer::doRecvFrom() onrecv err:"<< ec.message()<<endl;
 
 			peer->doRecvFrom();
 		}

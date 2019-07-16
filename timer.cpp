@@ -2,14 +2,21 @@
 //
 
 #include "timer.h"
+#include "networkpool.h"
 #include <chrono>
 
 namespace asiow{
 
-Timer::Timer(io_context& ioc, int ms)
-	:_timer(ioc, std::chrono::milliseconds(ms) )
+timer_ptr Timer::create(int ms)
+{
+	return timer_ptr(new Timer(ms));
+}
+
+Timer::Timer(int ms)
+	:ContextTask(NetworkPool::instance().getThread())
 	,_expire_ms(ms)
 {
+	this->_socket.expires_after( std::chrono::milliseconds(_expire_ms) );
 }
 
 void Timer::start(const TimeoutDelegate& timeout)
@@ -22,18 +29,18 @@ void Timer::start(const TimeoutDelegate& timeout)
 		{
 			if (ec != boost::asio::error::operation_aborted)
 			{
-				_timeout_d(this);
-				_timer.expires_after(std::chrono::milliseconds(_expire_ms));
-				_timer.async_wait(_handler);
+				_timeout_d(this->shared_from_this());
+				this->_socket.expires_after(std::chrono::milliseconds(_expire_ms));
+				this->_socket.async_wait(_handler);
 			}
 		};
 
-	_timer.async_wait(_handler);
+	this->_socket.async_wait(_handler);
 }
 
 void Timer::stop()
 {
-	_timer.cancel();
+	this->_socket.cancel();
 }
 
 }

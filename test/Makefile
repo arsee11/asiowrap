@@ -1,6 +1,6 @@
 CC=g++
 CXXFLAGS+= -g --std=c++11
-TARGET=udptest connectortest acceptor
+TARGET=udptest connectortest acceptor timer mcaster
 
 LINKS= -lboost_system -L../build -lasiow -lpthread
 
@@ -19,11 +19,11 @@ connectortest: connector_test.cpp
 #netpool: networkpool_test.cpp
 #	$(CC) $(INC_DIR) -o $@ $(CXXFLAGS) $<  $(LINKS)
 
-#timer: timer_test.cpp
-#	$(CC) $(INC_DIR) -o $@ $(CXXFLAGS) $<  $(LINKS)
+timer: timer_test.cpp
+	$(CC) $(INC_DIR) -o $@ $(CXXFLAGS) $<  $(LINKS)
 
-#mcaster: mcast_test.cpp
-#	$(CC) $(INC_DIR) -o $@ $(CXXFLAGS) $<  $(LINKS)
+mcaster: mcast_test.cpp
+	$(CC) $(INC_DIR) -o $@ $(CXXFLAGS) $<  $(LINKS)
 
 .PHONY:clean
 clean:
